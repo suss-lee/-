@@ -1,1 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>당근마켓 기본 MVP</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f1f3f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .mobile-container { max-width: 420px; min-height: 100vh; background-color: #fff; margin: 0 auto; box-shadow: 0 0 15px rgba(0,0,0,0.08); display: flex; flex-direction: column; }
+    .post-card { border-bottom: 1px solid #f1f3f5; padding: 14px; cursor: pointer; }
+    .post-card:hover { background-color: #f8f9fa; }
+    .chat-window { height: 360px; overflow-y: auto; background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .bubble { max-width: 78%; padding: 8px 12px; border-radius: 12px; font-size: 0.9rem; word-break: break-all; }
+    .bubble-me { align-self: flex-end; background-color: #ff8a3d; color: #fff; }
+    .bubble-other { align-self: flex-start; background-color: #fff; border: 1px solid #dee2e6; color: #212529; }
+  </style>
+</head>
+<body>
+  <div class="mobile-container">
+    
+    <!-- 상단 헤더 (사용자 전환 & 동네인증) -->
+    <div class="p-3 border-bottom d-flex justify-content-between align-items-center bg-white">
+      <div class="d-flex align-items-center gap-2">
+        <h5 class="m-0 fw-bold" style="color: #ff8a3d;">🥕 당근</h5>
+        <span id="badge-town" class="badge bg-secondary">미인증</span>
+      </div>
+      <div class="d-flex gap-1 align-items-center">
+        <!-- 창 2개로 채팅 시연할 때 구분하기 위한 사용자 선택 -->
+        <select id="current-user" class="form-select form-select-sm" style="width: auto;">
+          <option value="당근이(구매자)">당근이(구매자)</option>
+          <option value="성수장인(판매자)">성수장인(판매자)</option>
+        </select>
+        <button class="btn btn-sm btn-outline-warning text-dark fw-bold" onclick="handleVerifyTown()">동네인증</button>
+      </div>
+    </div>
 
+    <!-- 탭 메뉴 -->
+    <div class="d-flex border-bottom text-center bg-white">
+      <button id="btn-tab-feed" class="btn flex-fill py-2 fw-bold text-warning border-0" onclick="switchTab('feed')">홈 피드</button>
+      <button id="btn-tab-write" class="btn flex-fill py-2 fw-bold text-secondary border-0" onclick="switchTab('write')">글쓰기</button>
+      <button id="btn-tab-chat" class="btn flex-fill py-2 fw-bold text-secondary border-0" onclick="switchTab('chat')">1:1 채팅</button>
+    </div>
+
+    <!-- 본문 영역 -->
+    <div class="p-3 flex-grow-1">
+      
+      <!-- 1. 홈 피드 화면 -->
+      <div id="view-feed">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="text-muted small fw-bold">성수동 최신 매물</span>
+          <button class="btn btn-sm btn-light border" onclick="fetchPosts()">새로고침</button>
+        </div>
+        <div id="post-list"></div>
+      </div>
+
+      <!-- 2. 게시글 상세 보기 화면 -->
+      <div id="view-detail" style="display: none;">
+        <button class="btn btn-sm btn-light border mb-3" onclick="switchTab('feed')">← 목록으로</button>
+        <div class="border-bottom pb-2 mb-3">
+          <div class="small text-muted" id="detail-seller"></div>
+          <h5 class="fw-bold mt-1" id="detail-title"></h5>
+          <div class="text-danger fw-bold fs-5" id="detail-price"></div>
+        </div>
+        <p id="detail-content" class="text-secondary" style="min-height: 100px; white-space: pre-line;"></p>
+        <button class="btn w-100 fw-bold text-white" style="background-color: #ff8a3d;" onclick="enterChatFromDetail()">1:1 채팅하기</button>
+      </div>
+
+      <!-- 3. 글쓰기 화면 -->
+      <div id="view-write" style="display: none;">
+        <h6 class="fw-bold mb-3">내 물건 팔기</h6>
+        <div class="mb-2">
+          <label class="form-label small text-muted">글 제목</label>
+          <input type="text" id="inp-title" class="form-control" placeholder="제목을 입력하세요">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small text-muted">판매 가격 (원)</label>
+          <input type="number" id="inp-price" class="form-control" placeholder="가격을 입력하세요">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small text-muted">자세한 설명</label>
+          <textarea id="inp-content" class="form-control" rows="3" placeholder="상품 설명을 입력하세요"></textarea>
+        </div>
+        <button class="btn w-100 fw-bold text-white" style="background-color: #ff8a3d;" onclick="handleCreatePost()">등록 완료</button>
+      </div>
+
+      <!-- 4. 실시간 1:1 채팅 화면 -->
+      <div id="view-chat" style="display: none;">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-bold small" id="chat-header-title">1:1 채팅방 (기본 #1)</span>
+          <span id="socket-status" class="badge bg-secondary">연결 대기</span>
+        </div>
+        <div id="chat-window" class="chat-window mb-2"></div>
+        <div class="input-group">
+          <input type="text" id="inp-chat" class="form-control" placeholder="메시지 입력..." onkeyup="if(window.event.keyCode===13){handleSendChat()}">
+          <button class="btn text-white fw-bold" style="background-color: #ff8a3d;" onclick="handleSendChat()">전송</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:8000";
+    let ws = null;
+    let currentPost = { id: 1, title: "블루투스 기계식 키보드" };
+
+    // 화면 전환
+    function switchTab(tab) {
+      ['feed', 'detail', 'write', 'chat'].forEach(v => {
+        document.getElementById(`view-${v}`).style.display = (v === tab) ? 'block' : 'none';
+      });
+      ['feed', 'write', 'chat'].forEach(t => {
+        document.getElementById(`btn-tab-${t}`).className = (t === tab)
+          ? 'btn flex-fill py-2 fw-bold text-warning border-0'
+          : 'btn flex-fill py-2 fw-bold text-secondary border-0';
+      });
+
+      if (tab === 'feed') fetchPosts();
+      if (tab === 'chat' && !ws) connectSocket(currentPost.id, currentPost.title);
+    }
+
+    // 1. 가상 동네 인증
+    async function handleVerifyTown() {
+      try {
+        const res = await fetch(`${API_BASE}/api/town/verify`, { method: 'POST' });
+        const data = await res.json();
+        const badge = document.getElementById('badge-town');
+        badge.innerText = `${data.town} 인증됨`;
+        badge.className = "badge bg-success";
+        alert(data.message);
+      } catch (err) {
+        alert("백엔드 서버가 실행 중인지 확인하세요 (http://localhost:8000)");
+      }
+    }
+
+    // 2. 홈 피드 목록 조회
+    async function fetchPosts() {
+      try {
+        const res = await fetch(`${API_BASE}/api/posts`);
+        const posts = await res.json();
+        const container = document.getElementById('post-list');
+        container.innerHTML = posts.map(p => `
+          <div class="post-card" onclick="openPostDetail(${p.id})">
+            <div class="fw-bold">${p.title}</div>
+            <div class="small text-muted">${p.town} · ${p.seller_name} · ${p.created_at}</div>
+            <div class="text-danger fw-bold mt-1">${p.price.toLocaleString()}원</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        document.getElementById('post-list').innerHTML = `<div class="text-center text-muted py-4 small">백엔드 서버(8000번 포트)를 먼저 켜주세요.</div>`;
+      }
+    }
+
+    // 3. 게시글 상세 조회
+    async function openPostDetail(postId) {
+      const res = await fetch(`${API_BASE}/api/posts/${postId}`);
+      const post = await res.json();
+      currentPost = post;
+
+      document.getElementById('detail-seller').innerText = `${post.town} · ${post.seller_name}`;
+      document.getElementById('detail-title').innerText = post.title;
+      document.getElementById('detail-price').innerText = `${post.price.toLocaleString()}원`;
+      document.getElementById('detail-content').innerText = post.content || "상세 설명이 없습니다.";
+      switchTab('detail');
+    }
+
+    // 4. 판매글 등록
+    async function handleCreatePost() {
+      const title = document.getElementById('inp-title').value.trim();
+      const price = document.getElementById('inp-price').value.trim();
+      const content = document.getElementById('inp-content').value.trim();
+      const seller = document.getElementById('current-user').value;
+
+      if (!title || !price) return alert("제목과 가격을 입력해주세요.");
+
+      await fetch(`${API_BASE}/api/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seller_name: seller,
+          title: title,
+          price: Number(price),
+          content: content,
+          town: "성수동"
+        })
+      });
+
+      document.getElementById('inp-title').value = '';
+      document.getElementById('inp-price').value = '';
+      document.getElementById('inp-content').value = '';
+      alert("게시글이 등록되었습니다.");
+      switchTab('feed');
+    }
+
+    // 5. 상세 화면에서 1:1 채팅 진입
+    function enterChatFromDetail() {
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+      document.getElementById('chat-window').innerHTML = '';
+      switchTab('chat');
+      connectSocket(currentPost.id, currentPost.title);
+    }
+
+    function connectSocket(postId, postTitle) {
+      document.getElementById('chat-header-title').innerText = `채팅방: ${postTitle}`;
+      ws = new WebSocket(`ws://localhost:8000/ws/chat/${postId}`);
+      const statusBadge = document.getElementById('socket-status');
+
+      ws.onopen = () => {
+        statusBadge.className = "badge bg-success";
+        statusBadge.innerText = "실시간 연결됨";
+      };
+
+      ws.onmessage = (event) => {
+        const msgObj = JSON.parse(event.data);
+        const myName = document.getElementById('current-user').value;
+        const isMe = (msgObj.sender === myName);
+
+        const box = document.getElementById('chat-window');
+        box.innerHTML += `
+          <div class="bubble ${isMe ? 'bubble-me' : 'bubble-other'}">
+            <div class="small fw-bold mb-1" style="font-size: 0.75rem; opacity: 0.85;">${msgObj.sender}</div>
+            <div>${msgObj.text}</div>
+          </div>
+        `;
+        box.scrollTop = box.scrollHeight;
+      };
+
+      ws.onclose = () => {
+        statusBadge.className = "badge bg-secondary";
+        statusBadge.innerText = "연결 종료";
+      };
+    }
+
+    function handleSendChat() {
+      const input = document.getElementById('inp-chat');
+      const myName = document.getElementById('current-user').value;
+      if (input.value.trim() && ws && ws.readyState === WebSocket.OPEN) {
+        const payload = JSON.stringify({
+          sender: myName,
+          text: input.value.trim()
+        });
+        ws.send(payload);
+        input.value = '';
+      }
+    }
+
+    fetchPosts();
+  </script>
+</body>
+</html>
